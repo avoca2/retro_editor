@@ -1,8 +1,9 @@
-import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb; // Para detectar la web
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter95/flutter95.dart';
 import 'package:file_selector/file_selector.dart';
@@ -10,14 +11,17 @@ import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:material_ui/material_ui.dart' as material_ui;
 import 'package:camera/camera.dart';
+import 'package:universal_io/io.dart'; // Reemplaza a dart:io
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   List<CameraDescription> cameras = [];
-  try {
-    cameras = await availableCameras();
-  } catch (e) {
-    debugPrint("No se pudieron cargar las cámaras: $e");
+  if (!kIsWeb) {
+    try {
+      cameras = await availableCameras();
+    } catch (e) {
+      debugPrint("No se pudieron cargar las cámaras: $e");
+    }
   }
   runApp(MyApp(cameras: cameras));
 }
@@ -252,6 +256,10 @@ class _RetroHomePageState extends State<RetroHomePage> {
   }
 
   void _takePhoto() async {
+    if (kIsWeb) {
+      _showSnackBar('La captura de cámara no está disponible en la versión web. Usa la versión de escritorio o Android.');
+      return;
+    }
     if (Platform.isAndroid || Platform.isIOS) {
       if (widget.cameras.isEmpty) {
         _showSnackBar('No se encontraron cámaras en el dispositivo.');
@@ -277,6 +285,17 @@ class _RetroHomePageState extends State<RetroHomePage> {
 
   Future<void> _saveImage(Uint8List bytes) async {
     try {
+      if (kIsWeb) {
+        // En web, forzamos la descarga del archivo
+        final anchor = AnchorElement(
+          href: 'data:image/png;base64,${base64Encode(bytes)}',
+        )
+          ..setAttribute("download", "retro_edit_${DateTime.now().millisecondsSinceEpoch}.png")
+          ..click();
+        _showSnackBar('Descargando imagen...');
+        return;
+      }
+      
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final filePath = '${directory.path}/retro_edit_$timestamp.png';
@@ -291,6 +310,10 @@ class _RetroHomePageState extends State<RetroHomePage> {
   }
 
   Future<void> _openSaveFolder() async {
+    if (kIsWeb) {
+      _showSnackBar('Función no disponible en la web.');
+      return;
+    }
     if (Platform.isLinux) {
       try {
         final directory = await getApplicationDocumentsDirectory();
@@ -314,7 +337,6 @@ class _RetroHomePageState extends State<RetroHomePage> {
     }
   }
 
-  // Diálogo de capas corregido (sin rebuildController)
   void _showLayersDialog(ProImageEditorState editor) {
     showDialog(
       context: context,
@@ -352,7 +374,6 @@ class _RetroHomePageState extends State<RetroHomePage> {
               Expanded(
                 child: Builder(
                   builder: (context) {
-                    // Leemos las capas activas directamente
                     final layers = editor.activeLayers;
                     if (layers.isEmpty) {
                       return const Center(child: Text('No hay capas añadidas.', style: TextStyle(fontSize: 12)));
